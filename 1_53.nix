@@ -12,7 +12,7 @@
 { stdenv, nixpkgs_src, lib
 , buildPackages
 , newScope, callPackage
-, CoreFoundation, Security
+, CoreFoundation, Security, SystemConfiguration
 , pkgsBuildTarget, pkgsBuildBuild, pkgsBuildHost
 , makeRustPlatform
 , llvmPackages_11
@@ -31,6 +31,9 @@ import (nixpkgs_src + "/pkgs/development/compilers/rust/default.nix") {
 
   # For use at runtime
   llvmShared = llvm_12.override { enableSharedLibraries = true; };
+
+  # Expose llvmPackages used for rustc from rustc via passthru for LTO in Firefox
+  llvmPackagesForBuild = pkgsBuildBuild.llvmPackages_12;
 
   # Note: the version MUST be one version prior to the version we're
   # building

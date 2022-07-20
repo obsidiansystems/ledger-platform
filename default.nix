@@ -9,7 +9,7 @@ rec {
     (self: super: {
       rust_1_53 = pkgs.callPackage ./1_53.nix {
         nixpkgs_src = self.path;
-        inherit (pkgs.darwin.apple_sdk.frameworks) CoreFoundation Security;
+        inherit (pkgs.darwin.apple_sdk.frameworks) CoreFoundation Security SystemConfiguration;
         llvm_12 = pkgs.llvmPackages_12.libllvm;
       };
       rustPackages_1_53 = self.rust_1_53.packages.stable;
