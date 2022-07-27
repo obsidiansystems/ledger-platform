@@ -10,8 +10,11 @@ arrayvec = { version = "0.7.2", default-features = false }
 ledger-log = { git = "https://github.com/obsidiansystems/ledger-platform", branch="wip-async" }
 pin-project = "1.0.10"
 nanos_sdk = { git = "https://github.com/LedgerHQ/ledger-nanos-sdk.git" } 
-ledger-parser-combinators = { git = "https://github.com/obsidiansystems/ledger-parser-combinators", branch="async" }
+ledger-parser-combinators = "0.1.0"
 
 [patch."https://github.com/LedgerHQ/ledger-nanos-sdk.git".nanos_sdk]
 git = "https://github.com/obsidiansystems/ledger-nanos-sdk.git"
 branch = "use-ambient-compiler-and-target"
+
+[patch.crates-io]
+ledger-parser-combinators = { git = "https://github.com/obsidiansystems/ledger-parser-combinators", branch = "async" }
