@@ -149,7 +149,7 @@ rec {
 
   rustShell = buildRustPackageClang {
     stdenv = ledgerPkgs.lldClangStdenv;
-    name = "rust-app";
+    name = "rust-ledger-app-shell";
     src = null;
     # We are just (ab)using buildRustPackage for a shell. When we actually build
     __internal_dontAddSysroot = true;
@@ -307,4 +307,112 @@ rec {
   cargo-watch = utils.workspaceMembers.cargo-watch.build;
 
   stack-sizes = utils.workspaceMembers.stack-sizes.build;
+
+  # Functions for use in ledger-apps
+  ledger-app = { appName, appGif, appToml, cargoNix, testPackage }: rec {
+    makeApp = { rootFeatures ? [ "default" ], release ? true }: cargoNix {
+      inherit rootFeatures release;
+      pkgs = ledgerPkgs;
+      buildRustCrateForPkgs = pkgs: let
+        fun = buildRustCrateForPkgsWrapper
+          pkgs
+          ((buildRustCrateForPkgsLedger pkgs).override {
+            defaultCrateOverrides = pkgs.defaultCrateOverrides // {
+              ${appName} = attrs: let
+                sdk = lib.findFirst (p: lib.hasPrefix "rust_nanos_sdk" p.name) (builtins.throw "no sdk!") attrs.dependencies;
+              in {
+                preHook = gccLibsPreHook;
+                extraRustcOpts = attrs.extraRustcOpts or [] ++ [
+                  "-C" "link-arg=-T${sdk.lib}/lib/nanos_sdk.out/script.ld"
+                  "-C" "linker=${pkgs.stdenv.cc.targetPrefix}clang"
+                ];
+              };
+            };
+          });
+      in
+        args: fun (args // lib.optionalAttrs pkgs.stdenv.hostPlatform.isAarch32 {
+          dependencies = map (d: d // { stdlib = true; }) [
+            ledgerCore
+            ledgerCompilerBuiltins
+          ] ++ args.dependencies;
+        });
+    };
+
+    app = makeApp {};
+    app-with-logging = makeApp {
+      release = false;
+      rootFeatures = [ "default" "speculos" "extra_debug" ];
+    };
+
+    rootCrate = app.rootCrate.build;
+    rootCrate-with-logging = app-with-logging.rootCrate.build;
+
+    tarSrc = ledgerPkgs.runCommandCC "tarSrc" {
+      nativeBuildInputs = [
+        cargo-ledger
+        ledgerRustPlatform.rust.cargo
+      ];
+    } (cargoLedgerPreHook + ''
+
+      cp ${appToml} ./Cargo.toml
+      # So cargo knows it's a binary
+      mkdir src
+      touch src/main.rs
+
+      RUSTC_BOOTSTRAP=1 cargo-ledger --use-prebuilt ${rootCrate}/bin/${appName} --hex-next-to-json
+
+      mkdir -p $out/${appName}
+      cp app.json app.hex $out/${appName}
+      cp ${./tarball-default.nix} $out/${appName}/default.nix
+      cp ${./tarball-shell.nix} $out/${appName}/shell.nix
+      cp ${appGif} $out/${appName}/${appName}.gif
+    '');
+
+    tarball = pkgs.runCommandNoCC "app-tarball.tar.gz" { } ''
+      tar -czvhf $out -C ${tarSrc} ${appName}
+    '';
+
+    loadApp = pkgs.writeScriptBin "load-app" ''
+    #!/usr/bin/env bash
+      cd ${tarSrc}/${appName}
+      ${ledgerctl}/bin/ledgerctl install -f ${tarSrc}/${appName}/app.json
+    '';
+
+
+    testScript = pkgs.writeShellScriptBin "mocha-wrapper" ''
+      cd ${testPackage}/lib/node_modules/*/
+      export NO_UPDATE_NOTIFIER=true
+      exec ${pkgs.nodejs-14_x}/bin/npm --offline test -- "$@"
+    '';
+
+    runTests = { appExe ? rootCrate + "/bin/${appName}" }: pkgs.runCommandNoCC "run-tests" {
+      nativeBuildInputs = [
+        pkgs.wget speculos.speculos testScript
+      ];
+    } ''
+      RUST_APP=${rootCrate}/bin/*
+      echo RUST APP IS $RUST_APP
+      # speculos -k 2.0 $RUST_APP --display headless &
+      mkdir $out
+      (
+      speculos -k 2.0 ${appExe} --display headless &
+      SPECULOS=$!
+
+      until wget -O/dev/null -o/dev/null http://localhost:5000; do sleep 0.1; done;
+
+      ${testScript}/bin/mocha-wrapper
+      rv=$?
+      kill -9 $SPECULOS
+      exit $rv) | tee $out/short |& tee $out/full
+      rv=$?
+      cat $out/short
+      exit $rv
+    '';
+    test-with-loging = runTests {
+      appExe = rootCrate-with-logging + "/bin/${appName}";
+    };
+    test = runTests {
+      appExe = rootCrate + "/bin/${appName}";
+    };
+  };
 }
