@@ -300,7 +300,21 @@ rec {
 
   ledgerStdlibCI = ledgerStdlib.rootCrate.build;
 
-  utils = import ./utils/Cargo.nix { inherit pkgs; };
+  utils = import ./utils/Cargo.nix {
+    inherit pkgs; 
+    defaultCrateOverrides = {
+      llvm-sys = attrs: {
+        LLVM_SYS_120_FFI_WORKAROUND=1;
+        LLVM_SYS_130_FFI_WORKAROUND=1;
+        LLVM_SYS_140_FFI_WORKAROUND=1;
+        LLVM_SYS_150_FFI_WORKAROUND=1;
+        buildInputs = [pkgs.llvmPackages_12.libllvm pkgs.zlib pkgs.ncurses pkgs.xml2 pkgs.libffi];
+      };
+      stack-sizes = attrs: {
+        buildInputs = [pkgs.llvmPackages_12.libllvm pkgs.zlib pkgs.ncurses pkgs.libxml2 pkgs.libffi];
+      };
+    };
+  };
 
   cargo-ledger = utils.workspaceMembers.cargo-ledger.build;
 
